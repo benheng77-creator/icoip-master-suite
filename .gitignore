@@ -6,3 +6,6 @@ dist/
 build/
 tmp/
 temp/
+playwright-report/
+archives/
+BONUS_ICOIP_Our_Portal_Landing_Snippet.html
