@@ -1,0 +1,27 @@
+{
+  "name": "icoip-projects",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://benheng77-creator:github_pat_11BMGWAXY0Gk7q1Gg1A5C1_XzKz3PzHjKzLzMzNzOzPzQzRzSzTzUzVzWzXzYzZ@github.com/benheng77-creator/icoip-master-suite.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/benheng77-creator/icoip-master-suite/issues"
+  },
+  "homepage": "https://github.com/benheng77-creator/icoip-master-suite#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}
