@@ -1,4 +1,8 @@
 <script>
+  // ============================================================
+  // ICOIP MASTER SUITE V2 — Scripts.html (portal 00)
+  // ============================================================
+
   const state = {
     master: window.ICOIP_BOOTSTRAP,
     currentUser: null,
@@ -12,42 +16,41 @@
     selectedBundle: null
   };
 
+  const _modalStack = [];
+  let _confirmAction = null;
+
   document.addEventListener('DOMContentLoaded', initApp);
 
   function initApp() {
     renderDemoUsers();
-    if (state.master.modules[state.moduleCode]) {
-      applyModuleConfig(state.moduleCode);
-    }
+    if (state.master.modules[state.moduleCode]) applyModuleConfig(state.moduleCode);
+    try {
+      const saved = sessionStorage.getItem('icoip_master_user');
+      if (saved) { selectUser(JSON.parse(saved)); return; }
+    } catch (e) {}
   }
 
+  // --- Demo Users ---
   function renderDemoUsers() {
     const wrap = document.getElementById('demoUserGrid');
     wrap.innerHTML = '';
-    (state.master.demoUsers || []).forEach((user) => {
+    (state.master.demoUsers || []).forEach(function(user) {
       const card = document.createElement('button');
       card.type = 'button';
       card.className = 'user-card';
-      card.innerHTML = `
-        <div class="eyebrow">${escapeHtml(user.role)}</div>
-        <div class="user-card-title">${escapeHtml(user.fullName)}</div>
-        <div class="user-card-meta">${escapeHtml(user.email)} · ${escapeHtml(user.department || '')}</div>
-        <div class="chip-wrap">
-          ${(state.master.permissions[user.role] || []).map((p) => `<span class="chip">${escapeHtml(p)}</span>`).join('')}
-        </div>
-      `;
-      card.addEventListener('click', () => selectUser(user));
+      card.setAttribute('aria-label', 'Sign in as ' + user.role + ': ' + user.fullName);
+      card.innerHTML =
+        '<div class="user-card-role">' + escapeHtml(user.role) + '</div>' +
+        '<div class="user-card-title">' + escapeHtml(user.fullName) + '</div>' +
+        '<div class="user-card-meta">' + escapeHtml(user.department || '') + '</div>';
+      card.addEventListener('click', function() { selectUser(user); });
       wrap.appendChild(card);
     });
   }
 
   function selectUser(user) {
-    state.currentUser = {
-      email: user.email,
-      fullName: user.fullName,
-      role: user.role,
-      department: user.department || ''
-    };
+    state.currentUser = { email: user.email, fullName: user.fullName, role: user.role, department: user.department || '' };
+    try { sessionStorage.setItem('icoip_master_user', JSON.stringify(user)); } catch (e) {}
     document.getElementById('loginModal').classList.add('hidden');
     document.getElementById('appShell').classList.remove('hidden');
     switchModule(state.moduleCode);
@@ -57,6 +60,7 @@
     document.getElementById('loginModal').classList.remove('hidden');
   }
 
+  // --- Module Switching ---
   function switchModule(moduleCode) {
     if (!state.master.modules[moduleCode]) return;
     closeRecordModal();
@@ -65,6 +69,7 @@
     closeEmailModal();
     state.moduleCode = moduleCode;
     applyModuleConfig(moduleCode);
+    showSkeleton();
     loadModuleState(document.getElementById('searchInput').value.trim());
   }
 
@@ -76,9 +81,14 @@
     renderModuleBanner();
   }
 
-  function loadModuleState(searchTerm = '') {
+  // --- Data Loading ---
+  function loadModuleState(searchTerm, highlightId) {
+    searchTerm = searchTerm || '';
+    highlightId = highlightId || '';
+    showSkeleton();
     google.script.run
-      .withSuccessHandler((response) => {
+      .withSuccessHandler(function(response) {
+        hideSkeleton();
         state.permissions = response.permissions || [];
         state.records = response.records || [];
         state.stats = response.stats || {};
@@ -92,59 +102,66 @@
         renderModuleCards();
         renderModuleBanner();
         renderStats();
-        renderTable();
+        renderTable(highlightId);
         renderActivity(response.recentActivity || []);
         renderNotifications(response.notifications || []);
         applyPermissionVisibility();
+        announce(state.records.length + ' records loaded in ' + (state.moduleConfig.pageTitle || ''));
       })
-      .withFailureHandler(showError)
+      .withFailureHandler(function(err) {
+        hideSkeleton();
+        showError(err);
+      })
       .getModuleState(state.moduleCode, state.currentUser, searchTerm);
   }
 
-  function renderCurrentUser() {
-    document.getElementById('currentUserName').textContent = state.currentUser.fullName || '';
-    document.getElementById('currentUserMeta').textContent = `${state.currentUser.role || ''} · ${state.currentUser.email || ''}`;
-    document.getElementById('permissionChips').innerHTML = state.permissions.map((p) => `<span class="chip">${escapeHtml(p)}</span>`).join('');
+  function showSkeleton() {
+    document.getElementById('tableSkeleton').classList.remove('hidden');
+    document.getElementById('tableCard').classList.add('hidden');
   }
 
+  function hideSkeleton() {
+    document.getElementById('tableSkeleton').classList.add('hidden');
+    document.getElementById('tableCard').classList.remove('hidden');
+  }
+
+  // --- Render User ---
+  function renderCurrentUser() {
+    document.getElementById('currentUserName').textContent = state.currentUser.fullName || '';
+    document.getElementById('currentUserMeta').textContent = (state.currentUser.role || '') + ' · ' + (state.currentUser.email || '');
+    document.getElementById('permissionChips').innerHTML = state.permissions.map(function(p) {
+      return '<span class="chip">' + escapeHtml(p) + '</span>';
+    }).join('');
+  }
+
+  // --- Module Cards ---
   function renderModuleCards() {
     const wrap = document.getElementById('moduleGrid');
     wrap.innerHTML = '';
-    const cards = state.moduleCards.length ? state.moduleCards : (state.master.moduleOrder || []).map((code) => {
+    const cards = state.moduleCards.length ? state.moduleCards : (state.master.moduleOrder || []).map(function(code) {
       const cfg = state.master.modules[code];
-      return {
-        moduleCode: code,
-        title: cfg.pageTitle,
-        subtitle: cfg.pageSubtitle,
-        description: cfg.cardDescription,
-        icon: cfg.cardIcon,
-        totalRecords: 0,
-        primarySheet: cfg.primarySheet
-      };
+      return { moduleCode: code, title: cfg.pageTitle, subtitle: cfg.pageSubtitle, description: cfg.cardDescription, icon: cfg.cardIcon, totalRecords: 0 };
     });
-    cards.forEach((card) => {
+    cards.forEach(function(card) {
       const active = card.moduleCode === state.moduleCode ? ' active' : '';
       const el = document.createElement('button');
       el.type = 'button';
       el.className = 'module-card' + active;
-      el.innerHTML = `
-        <div class="module-card-top">
-          <div>
-            <div class="eyebrow">${escapeHtml(card.moduleCode)}</div>
-            <div class="module-title">${escapeHtml(card.title)}</div>
-            <div class="module-subtitle">${escapeHtml(card.description || card.subtitle || '')}</div>
-          </div>
-          <div class="module-icon">${escapeHtml(card.icon || '■')}</div>
-        </div>
-        <div class="module-stat">
-          <div>
-            <div class="muted tiny">Demo records</div>
-            <div class="module-stat-value">${escapeHtml(String(card.totalRecords || 0))}</div>
-          </div>
-          <span class="chip ${card.moduleCode === state.moduleCode ? 'secondary' : ''}">${card.moduleCode === state.moduleCode ? 'Current' : 'Open'}</span>
-        </div>
-      `;
-      el.addEventListener('click', () => switchModule(card.moduleCode));
+      el.setAttribute('aria-label', 'Switch to ' + card.title + (card.moduleCode === state.moduleCode ? ' (current)' : ''));
+      el.innerHTML =
+        '<div class="module-card-top">' +
+          '<div>' +
+            '<div class="eyebrow">' + escapeHtml(card.moduleCode) + '</div>' +
+            '<div class="module-title">' + escapeHtml(card.title) + '</div>' +
+            '<div class="module-subtitle">' + escapeHtml(card.description || card.subtitle || '') + '</div>' +
+          '</div>' +
+          '<div class="module-icon">' + escapeHtml(card.icon || '■') + '</div>' +
+        '</div>' +
+        '<div class="module-stat">' +
+          '<div><div class="muted tiny">Demo records</div><div class="module-stat-value">' + escapeHtml(String(card.totalRecords || 0)) + '</div></div>' +
+          '<span class="chip ' + (card.moduleCode === state.moduleCode ? 'secondary' : '') + '">' + (card.moduleCode === state.moduleCode ? 'Current' : 'Open') + '</span>' +
+        '</div>';
+      el.addEventListener('click', function() { switchModule(card.moduleCode); });
       wrap.appendChild(el);
     });
   }
@@ -153,125 +170,142 @@
     const cfg = state.moduleConfig || {};
     document.getElementById('moduleTitle').textContent = cfg.pageTitle || '';
     document.getElementById('moduleSubtitle').textContent = cfg.pageSubtitle || '';
-    document.getElementById('moduleMetaCard').innerHTML = `
-      <div class="module-meta-line"><span class="module-meta-key">Module code</span><span class="module-meta-value">${escapeHtml(cfg.portalCode || '')}</span></div>
-      <div class="module-meta-line"><span class="module-meta-key">Primary sheet</span><span class="module-meta-value">${escapeHtml(cfg.primarySheet || '')}</span></div>
-      <div class="module-meta-line"><span class="module-meta-key">Form fields</span><span class="module-meta-value">${escapeHtml(String((cfg.formFields || []).length))}</span></div>
-      <div class="module-meta-line"><span class="module-meta-key">Workflow actions</span><span class="module-meta-value">${escapeHtml(String(((cfg.workflow || {}).actions || []).length))}</span></div>
-    `;
+    document.getElementById('moduleMetaCard').innerHTML =
+      '<div class="module-meta-line"><span class="module-meta-key">Module code</span><span class="module-meta-value">' + escapeHtml(cfg.portalCode || '') + '</span></div>' +
+      '<div class="module-meta-line"><span class="module-meta-key">Primary sheet</span><span class="module-meta-value">' + escapeHtml(cfg.primarySheet || '') + '</span></div>' +
+      '<div class="module-meta-line"><span class="module-meta-key">Form fields</span><span class="module-meta-value">' + escapeHtml(String((cfg.formFields || []).length)) + '</span></div>' +
+      '<div class="module-meta-line"><span class="module-meta-key">Workflow actions</span><span class="module-meta-value">' + escapeHtml(String(((cfg.workflow || {}).actions || []).length)) + '</span></div>';
   }
 
+  // --- Stats ---
   function renderStats() {
-    const statsGrid = document.getElementById('statsGrid');
-    statsGrid.innerHTML = '';
-    (state.moduleConfig.dashboardMetrics || []).forEach((metric) => {
+    const grid = document.getElementById('statsGrid');
+    grid.innerHTML = '';
+    (state.moduleConfig.dashboardMetrics || []).forEach(function(metric) {
       const card = document.createElement('div');
       card.className = 'stat-card';
       const value = state.stats[metric.id] == null ? 0 : state.stats[metric.id];
-      card.innerHTML = `<div class="stat-label">${escapeHtml(metric.label)}</div><div class="stat-value">${escapeHtml(String(value))}</div>`;
-      statsGrid.appendChild(card);
+      card.setAttribute('aria-label', metric.label + ': ' + value);
+      card.innerHTML = '<div class="stat-label">' + escapeHtml(metric.label) + '</div><div class="stat-value">' + escapeHtml(String(value)) + '</div>';
+      grid.appendChild(card);
     });
   }
 
+  // --- Activity / Notifications ---
   function renderActivity(items) {
     const wrap = document.getElementById('activityFeed');
-    wrap.innerHTML = items.length ? '' : `<div class="muted">No recent activity.</div>`;
-    items.forEach((item) => {
+    if (!items.length) { wrap.innerHTML = renderEmptyState('No recent activity.', ''); return; }
+    wrap.innerHTML = '';
+    items.forEach(function(item) {
       const el = document.createElement('div');
       el.className = 'timeline-item';
-      el.innerHTML = `
-        <div class="timeline-title">${escapeHtml(item.action || '')}</div>
-        <div>${escapeHtml(item.recordId || 'No record')}</div>
-        <div class="timeline-meta">${escapeHtml(item.fullName || item.email || '')} · ${escapeHtml(item.timestamp || '')}</div>
-      `;
+      el.innerHTML = '<div class="timeline-title">' + escapeHtml(item.action || '') + '</div>' +
+        '<div style="font-size:13px">' + escapeHtml(item.recordId || '') + '</div>' +
+        '<div class="timeline-meta">' + escapeHtml(item.fullName || item.email || '') + ' · ' + escapeHtml(item.timestamp || '') + '</div>';
       wrap.appendChild(el);
     });
   }
 
   function renderNotifications(items) {
     const wrap = document.getElementById('notificationFeed');
-    wrap.innerHTML = items.length ? '' : `<div class="muted">No notifications sent yet.</div>`;
-    items.forEach((item) => {
+    if (!items.length) { wrap.innerHTML = renderEmptyState('No notifications sent yet.', ''); return; }
+    wrap.innerHTML = '';
+    items.forEach(function(item) {
       const el = document.createElement('div');
       el.className = 'timeline-item';
-      el.innerHTML = `
-        <div class="timeline-title">${escapeHtml(item.subject || '')}</div>
-        <div>${escapeHtml(item.to || '')}</div>
-        <div class="timeline-meta">${escapeHtml(item.deliveryStatus || '')} · ${escapeHtml(item.sentAt || item.triggeredAt || '')}</div>
-      `;
+      el.innerHTML = '<div class="timeline-title">' + escapeHtml(item.subject || '') + '</div>' +
+        '<div style="font-size:13px">' + escapeHtml(item.to || '') + '</div>' +
+        '<div class="timeline-meta">' + escapeHtml(item.deliveryStatus || '') + ' · ' + escapeHtml(item.sentAt || item.triggeredAt || '') + '</div>';
       wrap.appendChild(el);
     });
   }
 
+  // --- Table ---
   function renderTableHead() {
     const head = document.getElementById('tableHead');
     head.innerHTML = '';
     const tr = document.createElement('tr');
-    (state.moduleConfig.tableColumns || []).forEach((column) => {
+    (state.moduleConfig.tableColumns || []).forEach(function(column) {
       const th = document.createElement('th');
+      th.scope = 'col';
       th.textContent = column;
       tr.appendChild(th);
     });
     const actionTh = document.createElement('th');
+    actionTh.scope = 'col';
     actionTh.textContent = 'Actions';
     tr.appendChild(actionTh);
     head.appendChild(tr);
   }
 
-  function renderTable() {
+  function renderTable(highlightId) {
+    highlightId = highlightId || '';
     const body = document.getElementById('tableBody');
     body.innerHTML = '';
     if (!state.records.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="${state.moduleConfig.tableColumns.length + 1}" class="muted">No records found.</td>`;
+      tr.innerHTML = '<td colspan="' + ((state.moduleConfig.tableColumns || []).length + 1) + '" style="padding:0">' + renderEmptyState('No records yet', 'Add the first record to get started.') + '</td>';
       body.appendChild(tr);
     } else {
-      state.records.forEach((record) => {
+      state.records.forEach(function(record) {
         const tr = document.createElement('tr');
-        state.moduleConfig.tableColumns.forEach((column) => {
+        if (highlightId && record['Record ID'] === highlightId) tr.classList.add('row-saved');
+        (state.moduleConfig.tableColumns || []).forEach(function(column) {
           const td = document.createElement('td');
-          const value = record[column] == null ? '' : String(record[column]);
-          td.innerHTML = renderValueBadge(column, value);
+          td.innerHTML = renderValueBadge(column, record[column] == null ? '' : String(record[column]));
           tr.appendChild(td);
         });
-        const tdActions = document.createElement('td');
-        tdActions.innerHTML = `
-          <div class="actions">
-            <button class="btn btn-secondary btn-sm" type="button" onclick="openRecordWorkspace('${escapeAttr(record['Record ID'])}')">Open</button>
-            ${can('edit') ? `<button class="btn btn-ghost btn-sm" type="button" onclick="editRecord('${escapeAttr(record['Record ID'])}')">Edit</button>` : ''}
-            ${can('delete') ? `<button class="btn btn-danger btn-sm" type="button" onclick="removeRecord('${escapeAttr(record['Record ID'])}')">Delete</button>` : ''}
-          </div>
-        `;
-        tr.appendChild(tdActions);
+        const tdA = document.createElement('td');
+        tdA.innerHTML = '<div class="actions">' +
+          '<button class="btn btn-secondary btn-sm" type="button" onclick="openRecordWorkspace(\'' + escapeAttr(record['Record ID']) + '\')">Open</button>' +
+          (can('edit') ? '<button class="btn btn-ghost btn-sm" type="button" onclick="editRecord(\'' + escapeAttr(record['Record ID']) + '\')">Edit</button>' : '') +
+          (can('delete') ? '<button class="btn btn-danger btn-sm" type="button" onclick="confirmRemoveRecord(\'' + escapeAttr(record['Record ID']) + '\', this)">Delete</button>' : '') +
+          '</div>';
+        tr.appendChild(tdA);
         body.appendChild(tr);
       });
     }
-    document.getElementById('recordCountLabel').textContent = `${state.records.length} record${state.records.length === 1 ? '' : 's'} · ${state.moduleConfig.pageTitle}`;
+    document.getElementById('recordCountLabel').textContent = state.records.length + ' record' + (state.records.length === 1 ? '' : 's') + ' · ' + (state.moduleConfig.pageTitle || '');
+  }
+
+  function renderEmptyState(title, subtitle) {
+    return '<div style="text-align:center;padding:32px 20px;color:var(--muted)">' +
+      '<div style="font-size:28px;margin-bottom:10px">📋</div>' +
+      '<div style="font-weight:700;color:var(--text);font-size:15px;margin-bottom:4px">' + escapeHtml(title) + '</div>' +
+      (subtitle ? '<div style="font-size:13px">' + escapeHtml(subtitle) + '</div>' : '') +
+      '</div>';
   }
 
   function renderValueBadge(column, value) {
-    if (['Status','Priority','Risk Level','Onboarding Status','Eligibility Status','Case Status','Session Status','Follow Up Required','WSQ Alignment','Output Type','Access Level'].includes(column)) {
+    const badgeCols = ['Status','Priority','Risk Level','Onboarding Status','Eligibility Status','Case Status','Session Status','Follow Up Required','WSQ Alignment','Output Type','Access Level'];
+    if (badgeCols.indexOf(column) > -1) {
       let klass = 'badge';
-      const lowered = String(value || '').toLowerCase();
-      if (['urgent','critical','high','not eligible','cancelled'].includes(lowered)) klass += ' danger';
-      else if (['pending','requested','in review','in progress','ready for review','rescheduled'].includes(lowered)) klass += ' warn';
-      else if (['completed','assigned','eligible','active','yes'].includes(lowered)) klass += ' secondary';
-      return `<span class="${klass}">${escapeHtml(value || '-')}</span>`;
+      const low = String(value || '').toLowerCase();
+      if (['urgent','critical','high','not eligible','cancelled'].indexOf(low) > -1) klass += ' danger';
+      else if (['pending','requested','in review','in progress','ready for review','rescheduled'].indexOf(low) > -1) klass += ' warn';
+      else if (['completed','assigned','eligible','active','yes'].indexOf(low) > -1) klass += ' secondary';
+      return '<span class="' + klass + '">' + escapeHtml(value || '-') + '</span>';
     }
     return escapeHtml(value || '-');
   }
 
+  // --- Form Builder ---
   function buildForm() {
     const grid = document.getElementById('formGrid');
     grid.innerHTML = '';
-    (state.moduleConfig.formFields || []).forEach((field) => {
+    (state.moduleConfig.formFields || []).forEach(function(field) {
       const wrap = document.createElement('div');
       wrap.className = 'form-field' + (field.input === 'textarea' ? ' full' : '');
-      wrap.innerHTML = `<label for="${toInputId(field.key)}">${escapeHtml(field.label)}${field.required ? ' *' : ''}</label>`;
+      const lbl = document.createElement('label');
+      lbl.setAttribute('for', toInputId(field.key));
+      lbl.innerHTML = escapeHtml(field.label) + (field.required ? ' <span aria-hidden="true">*</span>' : '');
+      wrap.appendChild(lbl);
       let input;
       if (field.input === 'select') {
         input = document.createElement('select');
-        input.innerHTML = `<option value="">Select</option>` + (field.options || []).map((o) => `<option value="${escapeAttr(o)}">${escapeHtml(o)}</option>`).join('');
+        input.innerHTML = '<option value="">Select</option>' + (field.options || []).map(function(o) {
+          return '<option value="' + escapeAttr(o) + '">' + escapeHtml(o) + '</option>';
+        }).join('');
       } else if (field.input === 'textarea') {
         input = document.createElement('textarea');
       } else {
@@ -281,6 +315,11 @@
       input.id = toInputId(field.key);
       input.name = field.key;
       input.required = !!field.required;
+      input.addEventListener('input', function() {
+        input.classList.remove('field-invalid');
+        const err = wrap.querySelector('.field-error');
+        if (err) err.remove();
+      });
       wrap.appendChild(input);
       grid.appendChild(wrap);
     });
@@ -288,167 +327,175 @@
 
   function populateAttachmentCategories() {
     const select = document.getElementById('attachmentCategory');
-    select.innerHTML = (state.moduleConfig.attachmentCategories || []).map((item) => `<option value="${escapeAttr(item)}">${escapeHtml(item)}</option>`).join('');
+    select.innerHTML = (state.moduleConfig.attachmentCategories || []).map(function(item) {
+      return '<option value="' + escapeAttr(item) + '">' + escapeHtml(item) + '</option>';
+    }).join('');
   }
 
-  function can(permission) {
-    return state.permissions.indexOf(permission) > -1;
-  }
+  function can(permission) { return state.permissions.indexOf(permission) > -1; }
 
   function applyPermissionVisibility() {
     document.getElementById('addBtn').style.display = can('create') ? '' : 'none';
-    document.getElementById('resetModuleBtn').style.display = can('reset') ? '' : 'none';
-    document.getElementById('resetAllBtn').style.display = can('reset') ? '' : 'none';
+    document.getElementById('resetModuleBtn').hidden = !can('reset');
+    document.getElementById('resetAllBtn').hidden = !can('reset');
   }
 
-  function performSearch() {
-    loadModuleState(document.getElementById('searchInput').value.trim());
-  }
+  function performSearch() { showSkeleton(); loadModuleState(document.getElementById('searchInput').value.trim()); }
+  function clearSearch() { document.getElementById('searchInput').value = ''; loadModuleState(''); }
 
-  function clearSearch() {
-    document.getElementById('searchInput').value = '';
-    loadModuleState('');
-  }
-
+  // --- Record CRUD ---
   function openRecordModal(record) {
-    if (!can('create') && !can('edit')) return showToast('This role cannot create or edit records.');
-    document.getElementById('recordModalTitle').textContent = record ? `Edit ${state.moduleConfig.pageTitle} Record` : `Add ${state.moduleConfig.pageTitle} Record`;
+    if (!can('create') && !can('edit')) return showToast('This role cannot create or edit records.', 'error');
+    document.getElementById('recordModalTitle').textContent = record ? 'Edit ' + state.moduleConfig.pageTitle + ' Record' : 'Add ' + state.moduleConfig.pageTitle + ' Record';
     document.getElementById('recordIdField').value = record ? (record['Record ID'] || '') : '';
-    (state.moduleConfig.formFields || []).forEach((field) => {
+    clearFormErrors(document.getElementById('recordForm'));
+    (state.moduleConfig.formFields || []).forEach(function(field) {
       const input = document.getElementById(toInputId(field.key));
-      input.value = record && record[field.key] != null ? record[field.key] : '';
+      if (input) input.value = record && record[field.key] != null ? record[field.key] : '';
     });
-    document.getElementById('recordModal').classList.remove('hidden');
+    openModal('recordModal');
   }
 
   function closeRecordModal() {
-    document.getElementById('recordModal').classList.add('hidden');
+    closeModal('recordModal');
     document.getElementById('recordForm').reset();
     document.getElementById('recordIdField').value = '';
+    clearFormErrors(document.getElementById('recordForm'));
   }
 
   function editRecord(recordId) {
-    const record = state.records.find((r) => r['Record ID'] === recordId);
-    if (!record) return showToast('Record not found.');
+    const record = state.records.find(function(r) { return r['Record ID'] === recordId; });
+    if (!record) return showToast('Record not found.', 'error');
     openRecordModal(record);
   }
 
   function submitRecord(event) {
     event.preventDefault();
-    const payload = { 'Record ID': document.getElementById('recordIdField').value };
-    (state.moduleConfig.formFields || []).forEach((field) => {
+    const form = document.getElementById('recordForm');
+    if (!validateForm(form)) return;
+    const btn = document.getElementById('saveRecordBtn');
+    const loader = withButtonLoading(btn, 'Saving');
+    const savedId = document.getElementById('recordIdField').value;
+    const payload = { 'Record ID': savedId };
+    (state.moduleConfig.formFields || []).forEach(function(field) {
       payload[field.key] = document.getElementById(toInputId(field.key)).value;
     });
-
     google.script.run
-      .withSuccessHandler((response) => {
-        showToast(response.message || 'Saved.');
+      .withSuccessHandler(function(response) {
+        loader.done();
+        showToast(response.message || 'Record saved.', 'success');
         closeRecordModal();
-        loadModuleState(document.getElementById('searchInput').value.trim());
+        loadModuleState(document.getElementById('searchInput').value.trim(), savedId || response.recordId || '');
+        announce('Record saved successfully');
       })
-      .withFailureHandler(showError)
+      .withFailureHandler(function(err) { loader.done(); showError(err); })
       .saveRecord(state.moduleCode, payload, state.currentUser);
   }
 
-  function removeRecord(recordId) {
-    if (!can('delete')) return showToast('This role cannot delete records.');
-    if (!confirm('Delete this record?')) return;
-    google.script.run
-      .withSuccessHandler((response) => {
-        showToast(response.message || 'Deleted.');
-        loadModuleState(document.getElementById('searchInput').value.trim());
-      })
-      .withFailureHandler(showError)
-      .deleteRecord(state.moduleCode, recordId, state.currentUser);
+  function confirmRemoveRecord(recordId, triggerEl) {
+    if (!can('delete')) return showToast('This role cannot delete records.', 'error');
+    openCustomConfirm({
+      title: 'Delete record?',
+      message: 'This will permanently remove this record and cannot be undone.',
+      confirmText: 'Delete',
+      trigger: triggerEl,
+      onConfirm: function() {
+        google.script.run
+          .withSuccessHandler(function(response) {
+            showToast(response.message || 'Record deleted.', 'success');
+            loadModuleState(document.getElementById('searchInput').value.trim());
+            announce('Record deleted');
+          })
+          .withFailureHandler(showError)
+          .deleteRecord(state.moduleCode, recordId, state.currentUser);
+      }
+    });
   }
 
+  // --- Workspace ---
   function openRecordWorkspace(recordId) {
     state.selectedRecordId = recordId;
+    openModal('detailModal');
+    document.getElementById('summaryGrid').innerHTML = renderEmptyState('Loading…', '');
+    document.getElementById('workflowButtons').innerHTML = '';
+    document.getElementById('attachmentList').innerHTML = '';
+    document.getElementById('recordTimeline').innerHTML = '';
     google.script.run
-      .withSuccessHandler((bundle) => {
+      .withSuccessHandler(function(bundle) {
         state.selectedBundle = bundle;
         renderRecordWorkspace(bundle);
-        document.getElementById('detailModal').classList.remove('hidden');
       })
-      .withFailureHandler(showError)
+      .withFailureHandler(function(err) { closeDetailModal(); showError(err); })
       .getRecordBundle(state.moduleCode, recordId, state.currentUser);
   }
 
   function renderRecordWorkspace(bundle) {
     const record = bundle.record || {};
-    document.getElementById('detailTitle').textContent = `${state.moduleConfig.pageTitle} Workspace`;
-    document.getElementById('detailSubtitle').textContent = `${record['Record ID'] || ''}`;
-    const summaryGrid = document.getElementById('summaryGrid');
+    document.getElementById('detailTitle').textContent = (state.moduleConfig.pageTitle || '') + ' Workspace';
+    document.getElementById('detailSubtitle').textContent = record['Record ID'] || '';
     const fields = state.moduleConfig.summaryFields && state.moduleConfig.summaryFields.length ? state.moduleConfig.summaryFields : state.moduleConfig.tableColumns;
-    summaryGrid.innerHTML = fields.map((field) => `
-      <div class="summary-card">
-        <div class="summary-label">${escapeHtml(field)}</div>
-        <div class="summary-value">${escapeHtml(record[field] == null ? '' : String(record[field]))}</div>
-      </div>
-    `).join('');
-
-    const detailButtons = document.getElementById('detailButtons');
-    detailButtons.innerHTML = `
-      ${can('edit') ? `<button class="btn btn-secondary btn-sm" type="button" onclick="editRecord('${escapeAttr(record['Record ID'])}')">Edit Record</button>` : ''}
-      ${can('email') ? `<button class="btn btn-secondary btn-sm" type="button" onclick="openEmailModal()">Send Email</button>` : ''}
-      ${can('export') ? `<button class="btn btn-ghost btn-sm" type="button" onclick="openPrintableView()">Print / PDF</button>` : ''}
-    `;
-
-    const workflowButtons = document.getElementById('workflowButtons');
-    workflowButtons.innerHTML = bundle.quickActions && bundle.quickActions.length
-      ? bundle.quickActions.map((action) => `<button class="btn btn-primary btn-sm" type="button" onclick="runWorkflowAction('${escapeAttr(action.key)}')">${escapeHtml(action.label)}</button>`).join('')
-      : `<div class="muted">No workflow actions available for this record and role.</div>`;
-
-    const attachmentList = document.getElementById('attachmentList');
-    attachmentList.innerHTML = bundle.attachments && bundle.attachments.length
-      ? bundle.attachments.map((item) => `
-          <div class="mini-item">
-            <div><strong>${escapeHtml(item.fileName)}</strong></div>
-            <div class="muted">${escapeHtml(item.category)} · ${escapeHtml(formatBytes(item.fileSize || 0))}</div>
-            <div class="timeline-meta">${escapeHtml(item.uploadedBy || '')} · ${escapeHtml(item.uploadedAt || '')}</div>
-            <div style="margin-top:8px;"><a href="${escapeAttr(item.driveUrl)}" target="_blank">Open file</a></div>
-          </div>
-        `).join('')
-      : `<div class="muted">No attachments uploaded yet.</div>`;
-
-    const timeline = document.getElementById('recordTimeline');
-    timeline.innerHTML = bundle.timeline && bundle.timeline.length
-      ? bundle.timeline.map((item) => `
-          <div class="timeline-item">
-            <div class="timeline-title">${escapeHtml(item.action)}</div>
-            <div class="timeline-meta">${escapeHtml(item.fullName || item.email || '')} · ${escapeHtml(item.role || '')} · ${escapeHtml(item.timestamp || '')}</div>
-          </div>
-        `).join('')
-      : `<div class="muted">No timeline entries yet.</div>`;
+    document.getElementById('summaryGrid').innerHTML = (fields || []).map(function(field) {
+      return '<div class="summary-card"><div class="summary-label">' + escapeHtml(field) + '</div><div class="summary-value">' + escapeHtml(record[field] == null ? '—' : String(record[field])) + '</div></div>';
+    }).join('');
+    document.getElementById('detailButtons').innerHTML =
+      (can('edit') ? '<button class="btn btn-secondary btn-sm" type="button" onclick="editRecord(\'' + escapeAttr(record['Record ID']) + '\')">Edit Record</button>' : '') +
+      (can('email') ? '<button class="btn btn-secondary btn-sm" type="button" onclick="openEmailModal()">Send Email</button>' : '') +
+      (can('export') ? '<button class="btn btn-ghost btn-sm" type="button" onclick="openPrintableView()">Print / PDF</button>' : '');
+    const wfBtns = document.getElementById('workflowButtons');
+    if (bundle.quickActions && bundle.quickActions.length) {
+      wfBtns.innerHTML = bundle.quickActions.map(function(action) {
+        return '<button class="btn btn-primary btn-sm" type="button" onclick="runWorkflowAction(\'' + escapeAttr(action.key) + '\', this)">' + escapeHtml(action.label) + '</button>';
+      }).join('');
+    } else {
+      wfBtns.innerHTML = renderEmptyState('No workflow actions available for this role.', '');
+    }
+    document.getElementById('attachmentList').innerHTML = (bundle.attachments && bundle.attachments.length)
+      ? bundle.attachments.map(function(item) {
+          return '<div class="mini-item"><div style="font-weight:700;font-size:14px">' + escapeHtml(item.fileName) + '</div>' +
+            '<div class="muted" style="font-size:12px;margin-top:2px">' + escapeHtml(item.category) + ' · ' + escapeHtml(formatBytes(item.fileSize || 0)) + '</div>' +
+            '<div class="timeline-meta">' + escapeHtml(item.uploadedBy || '') + ' · ' + escapeHtml(item.uploadedAt || '') + '</div>' +
+            '<div style="margin-top:8px"><a href="' + escapeAttr(item.driveUrl) + '" target="_blank" rel="noopener">Open file ↗</a></div></div>';
+        }).join('')
+      : renderEmptyState('No attachments yet', 'Upload a file to attach it to this record.');
+    document.getElementById('recordTimeline').innerHTML = (bundle.timeline && bundle.timeline.length)
+      ? bundle.timeline.map(function(item) {
+          return '<div class="timeline-item"><div class="timeline-title">' + escapeHtml(item.action) + '</div>' +
+            '<div class="timeline-meta">' + escapeHtml(item.fullName || item.email || '') + ' · ' + escapeHtml(item.role || '') + ' · ' + escapeHtml(item.timestamp || '') + '</div></div>';
+        }).join('')
+      : renderEmptyState('No activity yet', 'Timeline entries will appear here.');
   }
 
   function closeDetailModal() {
-    document.getElementById('detailModal').classList.add('hidden');
+    closeModal('detailModal');
     state.selectedRecordId = '';
     state.selectedBundle = null;
   }
 
-  function runWorkflowAction(actionKey) {
-    if (!can('workflow')) return showToast('This role cannot run workflow actions.');
+  function runWorkflowAction(actionKey, btn) {
+    if (!can('workflow')) return showToast('This role cannot run workflow actions.', 'error');
     const note = document.getElementById('workflowNote').value.trim();
+    const loader = btn ? withButtonLoading(btn, 'Processing') : null;
     google.script.run
-      .withSuccessHandler((response) => {
-        showToast(response.message || 'Workflow updated.');
+      .withSuccessHandler(function(response) {
+        if (loader) loader.done();
+        showToast(response.message || 'Workflow updated.', 'success');
         openRecordWorkspace(state.selectedRecordId);
         loadModuleState(document.getElementById('searchInput').value.trim());
+        announce('Workflow action completed');
       })
-      .withFailureHandler(showError)
+      .withFailureHandler(function(err) { if (loader) loader.done(); showError(err); })
       .transitionRecord(state.moduleCode, state.selectedRecordId, actionKey, note, state.currentUser);
   }
 
+  // --- Attachments ---
   function openAttachmentModal() {
-    if (!can('upload')) return showToast('This role cannot upload attachments.');
-    if (!state.selectedRecordId) return showToast('Open a record first.');
-    document.getElementById('attachmentModal').classList.remove('hidden');
+    if (!can('upload')) return showToast('This role cannot upload attachments.', 'error');
+    if (!state.selectedRecordId) return showToast('Open a record first.', 'error');
+    openModal('attachmentModal');
   }
 
   function closeAttachmentModal() {
-    document.getElementById('attachmentModal').classList.add('hidden');
+    closeModal('attachmentModal');
     document.getElementById('attachmentForm').reset();
   }
 
@@ -456,23 +503,24 @@
     event.preventDefault();
     const fileInput = document.getElementById('attachmentFile');
     const file = fileInput.files && fileInput.files[0];
-    if (!file) return showToast('Please choose a file.');
-
+    if (!file) return showToast('Please choose a file.', 'error');
+    if (file.size > 4 * 1024 * 1024) return showToast('File exceeds 4MB. Choose a smaller file.', 'error');
+    const btn = document.getElementById('uploadBtn');
+    const loader = withButtonLoading(btn, 'Uploading');
     const reader = new FileReader();
-    reader.onload = function () {
+    reader.onload = function() {
       const base64Data = String(reader.result).split(',')[1];
       google.script.run
-        .withSuccessHandler((response) => {
-          showToast(response.message || 'Attachment uploaded.');
+        .withSuccessHandler(function(response) {
+          loader.done();
+          showToast(response.message || 'Attachment uploaded.', 'success');
           closeAttachmentModal();
           openRecordWorkspace(state.selectedRecordId);
           loadModuleState(document.getElementById('searchInput').value.trim());
         })
-        .withFailureHandler(showError)
+        .withFailureHandler(function(err) { loader.done(); showError(err); })
         .uploadAttachment(state.moduleCode, {
-          recordId: state.selectedRecordId,
-          fileName: file.name,
-          mimeType: file.type,
+          recordId: state.selectedRecordId, fileName: file.name, mimeType: file.type,
           base64Data: base64Data,
           category: document.getElementById('attachmentCategory').value,
           description: document.getElementById('attachmentDescription').value
@@ -481,32 +529,39 @@
     reader.readAsDataURL(file);
   }
 
+  // --- Email ---
   function openEmailModal() {
-    if (!can('email')) return showToast('This role cannot send notifications.');
+    if (!can('email')) return showToast('This role cannot send notifications.', 'error');
     const record = state.selectedBundle && state.selectedBundle.record ? state.selectedBundle.record : null;
-    if (!record) return showToast('Open a record first.');
-    const template = (state.moduleConfig.notificationTemplates || [])[0] || { subject: `${state.selectedRecordId} update` };
+    if (!record) return showToast('Open a record first.', 'error');
+    const template = (state.moduleConfig.notificationTemplates || [])[0] || { subject: state.selectedRecordId + ' update' };
     document.getElementById('emailTo').value = guessEmailRecipient(record);
     document.getElementById('emailCc').value = '';
-    document.getElementById('emailSubject').value = (template.subject || `${state.selectedRecordId} update`).replace('{{recordId}}', state.selectedRecordId);
-    document.getElementById('emailMessage').value = `Hello,\n\nThis is a demo notification from ${state.moduleConfig.pageTitle}.\n\nPlease review the latest update for record ${state.selectedRecordId}.`;
-    document.getElementById('emailModal').classList.remove('hidden');
+    document.getElementById('emailSubject').value = (template.subject || state.selectedRecordId + ' update').replace('{{recordId}}', state.selectedRecordId);
+    document.getElementById('emailMessage').value = 'Hello,\n\nThis is a demo notification from ' + state.moduleConfig.pageTitle + '.\n\nPlease review the latest update for record ' + state.selectedRecordId + '.';
+    clearFormErrors(document.getElementById('emailForm'));
+    openModal('emailModal');
   }
 
   function closeEmailModal() {
-    document.getElementById('emailModal').classList.add('hidden');
+    closeModal('emailModal');
     document.getElementById('emailForm').reset();
+    clearFormErrors(document.getElementById('emailForm'));
   }
 
   function submitEmail(event) {
     event.preventDefault();
+    if (!validateForm(document.getElementById('emailForm'))) return;
+    const btn = document.getElementById('sendEmailBtn');
+    const loader = withButtonLoading(btn, 'Sending');
     google.script.run
-      .withSuccessHandler((response) => {
-        showToast(response.message || 'Email sent.');
+      .withSuccessHandler(function(response) {
+        loader.done();
+        showToast(response.message || 'Email sent.', 'success');
         closeEmailModal();
         loadModuleState(document.getElementById('searchInput').value.trim());
       })
-      .withFailureHandler(showError)
+      .withFailureHandler(function(err) { loader.done(); showError(err); })
       .sendRecordEmail(state.moduleCode, {
         recordId: state.selectedRecordId,
         to: document.getElementById('emailTo').value.trim(),
@@ -518,84 +573,230 @@
 
   function guessEmailRecipient(record) {
     const fields = ['Email','Contact','Requestor'];
-    for (const field of fields) {
-      const value = record && record[field] ? String(record[field]) : '';
-      if (value.indexOf('@') > -1) return value;
+    for (let i = 0; i < fields.length; i++) {
+      const v = record && record[fields[i]] ? String(record[fields[i]]) : '';
+      if (v.indexOf('@') > -1) return v;
     }
     return 'demo-recipient@example.com';
   }
 
   function openPrintableView() {
-    if (!can('export')) return showToast('This role cannot export.');
+    if (!can('export')) return showToast('This role cannot export.', 'error');
     google.script.run
-      .withSuccessHandler((url) => {
-        if (!url) return showToast('Deploy as web app first to enable print view.');
+      .withSuccessHandler(function(url) {
+        if (!url) return showToast('Deploy as web app first to enable print view.', 'error');
         window.open(url, '_blank');
       })
       .withFailureHandler(showError)
       .getPrintableUrl(state.moduleCode, state.selectedRecordId);
   }
 
-  function resetModuleData() {
-    if (!can('reset')) return showToast('Only Admin can reset demo data.');
-    if (!confirm(`Reset the demo data for ${state.moduleConfig.pageTitle}?`)) return;
-    google.script.run
-      .withSuccessHandler((response) => {
-        showToast(response.message || 'Module reset done.');
-        closeDetailModal();
-        loadModuleState('');
-      })
-      .withFailureHandler(showError)
-      .resetModuleDemoData(state.moduleCode, state.currentUser);
+  // --- Reset Demo ---
+  function confirmResetModuleData() {
+    if (!can('reset')) return showToast('Only Admin can reset demo data.', 'error');
+    openCustomConfirm({
+      title: 'Reset ' + (state.moduleConfig.pageTitle || 'module') + '?',
+      message: 'This will clear all records in this module and reload the demo dataset.',
+      confirmText: 'Reset Module',
+      onConfirm: function() {
+        google.script.run
+          .withSuccessHandler(function(response) {
+            showToast(response.message || 'Module reset complete.', 'success');
+            loadModuleState('');
+          })
+          .withFailureHandler(showError)
+          .resetModuleDemoData(state.moduleCode, state.currentUser);
+      }
+    });
   }
 
-  function resetAllData() {
-    if (!can('reset')) return showToast('Only Admin can reset demo data.');
-    if (!confirm('Reset all demo data in the ICOIP master suite?')) return;
-    google.script.run
-      .withSuccessHandler((response) => {
-        showToast(response.message || 'All demo data reset done.');
-        closeDetailModal();
-        loadModuleState('');
-      })
-      .withFailureHandler(showError)
-      .resetAllDemoData(state.currentUser);
+  function confirmResetAllData() {
+    if (!can('reset')) return showToast('Only Admin can reset demo data.', 'error');
+    openCustomConfirm({
+      title: 'Reset all demo data?',
+      message: 'This will clear all records across all 5 modules in the ICOIP master suite.',
+      confirmText: 'Reset All',
+      onConfirm: function() {
+        google.script.run
+          .withSuccessHandler(function(response) {
+            showToast(response.message || 'All demo data reset.', 'success');
+            loadModuleState('');
+          })
+          .withFailureHandler(showError)
+          .resetAllDemoData(state.currentUser);
+      }
+    });
+  }
+
+  // ============================================================
+  // MODAL SYSTEM
+  // ============================================================
+  function openModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    _modalStack.push({ id: modalId, prev: document.activeElement });
+    modal.classList.remove('hidden');
+    setTimeout(function() {
+      const f = getFocusableEls(modal);
+      if (f.length) f[0].focus();
+    }, 50);
+    modal.addEventListener('keydown', handleModalKeydown);
+  }
+
+  function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.removeEventListener('keydown', handleModalKeydown);
+    for (let i = _modalStack.length - 1; i >= 0; i--) {
+      if (_modalStack[i].id === modalId) {
+        const entry = _modalStack.splice(i, 1)[0];
+        if (entry.prev && typeof entry.prev.focus === 'function') { try { entry.prev.focus(); } catch(e) {} }
+        break;
+      }
+    }
+  }
+
+  function handleModalKeydown(event) {
+    const modal = event.currentTarget;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      const id = modal.id;
+      if (id === 'recordModal') closeRecordModal();
+      else if (id === 'detailModal') closeDetailModal();
+      else if (id === 'attachmentModal') closeAttachmentModal();
+      else if (id === 'emailModal') closeEmailModal();
+      else if (id === 'customConfirmModal') closeCustomConfirm();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const f = getFocusableEls(modal);
+    if (!f.length) return;
+    if (event.shiftKey && document.activeElement === f[0]) { event.preventDefault(); f[f.length-1].focus(); }
+    else if (!event.shiftKey && document.activeElement === f[f.length-1]) { event.preventDefault(); f[0].focus(); }
+  }
+
+  function getFocusableEls(container) {
+    return Array.from(container.querySelectorAll(
+      'button:not(:disabled),[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])'
+    )).filter(function(el) {
+      const s = window.getComputedStyle(el);
+      return s.display !== 'none' && s.visibility !== 'hidden';
+    });
+  }
+
+  // ============================================================
+  // CUSTOM CONFIRM
+  // ============================================================
+  function openCustomConfirm(options) {
+    _confirmAction = options.onConfirm || null;
+    document.getElementById('confirmDialogTitle').textContent = options.title || 'Are you sure?';
+    document.getElementById('confirmDialogMessage').textContent = options.message || 'This action cannot be undone.';
+    document.getElementById('confirmSubmitBtn').textContent = options.confirmText || 'Confirm';
+    openModal('customConfirmModal');
+  }
+
+  function closeCustomConfirm() { closeModal('customConfirmModal'); _confirmAction = null; }
+
+  function executeConfirmedAction() {
+    const action = _confirmAction;
+    closeCustomConfirm();
+    if (action) action();
+  }
+
+  // ============================================================
+  // FORM VALIDATION
+  // ============================================================
+  function validateForm(form) {
+    let firstInvalid = null;
+    form.querySelectorAll('[required]').forEach(function(input) {
+      const wrap = input.parentElement;
+      const ex = wrap.querySelector('.field-error');
+      if (ex) ex.remove();
+      input.classList.remove('field-invalid');
+      if (!input.value.trim()) {
+        input.classList.add('field-invalid');
+        const err = document.createElement('span');
+        err.className = 'field-error';
+        err.setAttribute('role', 'alert');
+        err.textContent = 'This field is required.';
+        wrap.appendChild(err);
+        if (!firstInvalid) firstInvalid = input;
+      }
+    });
+    if (firstInvalid) { firstInvalid.focus(); return false; }
+    return true;
+  }
+
+  function clearFormErrors(form) {
+    if (!form) return;
+    form.querySelectorAll('.field-invalid').forEach(function(el) { el.classList.remove('field-invalid'); });
+    form.querySelectorAll('.field-error').forEach(function(el) { el.remove(); });
+  }
+
+  // ============================================================
+  // BUTTON LOADING
+  // ============================================================
+  function withButtonLoading(btn, label) {
+    const original = btn.innerHTML;
+    const w = btn.offsetWidth;
+    btn.disabled = true;
+    btn.style.minWidth = w + 'px';
+    btn.innerHTML = '⏳ ' + label + '…';
+    return { done: function() { btn.disabled = false; btn.innerHTML = original; btn.style.minWidth = ''; } };
+  }
+
+  // ============================================================
+  // TOAST
+  // ============================================================
+  function showToast(message, type) {
+    type = type || 'info';
+    const container = document.getElementById('toastContainer');
+    const item = document.createElement('div');
+    item.className = 'toast-item toast-' + type;
+    item.textContent = message;
+    container.appendChild(item);
+    setTimeout(function() {
+      item.classList.add('toast-fade');
+      setTimeout(function() { if (item.parentNode) item.parentNode.removeChild(item); }, 350);
+    }, 4000);
   }
 
   function showError(error) {
-    showToast(error && error.message ? error.message : 'Something went wrong.');
+    const msg = (error && error.message) ? error.message : '';
+    if (!msg) { showToast('Something went wrong. Please try again.', 'error'); return; }
+    const low = msg.toLowerCase();
+    if (low.indexOf('permission') > -1 || low.indexOf('authoriz') > -1) showToast('You don\'t have permission for this action.', 'error');
+    else if (low.indexOf('network') > -1 || low.indexOf('connect') > -1 || low.indexOf('timeout') > -1) showToast('Connection issue. Check your network and retry.', 'error');
+    else if (low.indexOf('validation') > -1 || low.indexOf('missing') > -1 || low.indexOf('required') > -1) showToast('Please check required fields and try again.', 'error');
+    else showToast(msg, 'error');
   }
 
-  function showToast(message) {
-    const toast = document.getElementById('toast');
-    toast.textContent = message;
-    toast.classList.remove('hidden');
-    clearTimeout(showToast._t);
-    showToast._t = setTimeout(() => toast.classList.add('hidden'), 2600);
+  function announce(message) {
+    const el = document.getElementById('ariaAnnouncer');
+    if (!el) return;
+    el.textContent = '';
+    setTimeout(function() { el.textContent = message; }, 50);
   }
 
-  function toInputId(key) {
-    return 'fld_' + key.replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase();
-  }
+  // ============================================================
+  // UTILITIES
+  // ============================================================
+  function toInputId(key) { return 'fld_' + key.replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase(); }
 
   function escapeHtml(text) {
     return String(text == null ? '' : text)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  function escapeAttr(text) {
-    return escapeHtml(text);
-  }
+  function escapeAttr(text) { return escapeHtml(text); }
 
   function formatBytes(bytes) {
     const n = Number(bytes || 0);
     if (!n) return '0 B';
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    return `${(n / 1024 / 1024).toFixed(2)} MB`;
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1048576).toFixed(2) + ' MB';
   }
 </script>
