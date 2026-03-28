@@ -43,7 +43,7 @@ for portal in "${PORTALS[@]}"; do
   fi
 
   echo "🚀 Pushing $portal …"
-  if (cd "$dir" && clasp push); then
+  if (cd "$dir" && clasp push --force); then
     echo "✅ $portal pushed successfully."
     pushed=$((pushed + 1))
   else

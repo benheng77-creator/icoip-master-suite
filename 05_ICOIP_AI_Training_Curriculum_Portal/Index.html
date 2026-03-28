@@ -251,7 +251,7 @@
     <div id="toastContainer" role="status" aria-live="polite" aria-atomic="false"></div>
 
     <script>
-      window.APP_CONFIG = <?= appConfigJson ?>;
+      window.APP_CONFIG = <?!= appConfigJson ?>;
       window.BASE_URL = "<?= baseUrl ?>";
     </script>
     <?!= include('Scripts'); ?>

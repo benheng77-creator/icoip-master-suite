@@ -5,7 +5,35 @@
       "Bash(npm init:*)",
       "Bash(npm install:*)",
       "Bash(git -C c:/Users/jvben/Desktop/PROJECTS/icoip-projects status --short)",
-      "Bash(git -C c:/Users/jvben/Desktop/PROJECTS/icoip-projects status)"
+      "Bash(git -C c:/Users/jvben/Desktop/PROJECTS/icoip-projects status)",
+      "Bash(clasp list:*)",
+      "Bash(bash push-all.sh)",
+      "Bash(for p:*)",
+      "Bash(do)",
+      "Bash(echo \"=== $p ===\")",
+      "Read(//c/Users/jvben/Desktop/PROJECTS/icoip-projects/$p/**)",
+      "Bash(done)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(node -e \":*)",
+      "Read(//c/Users/jvben/AppData/Local/Google/Chrome/User Data/**)",
+      "Bash(head -10 grep -n \"doGet\\\\|function do\" 01_ICOIP_Volunteer_Management_Portal/Server.gs)",
+      "Read(//c/Users/jvben/**)",
+      "Bash(node scripts/gas-deploy-webapp.js)",
+      "Bash(node scripts/debug-frames.mjs)",
+      "Bash(ls 01_ICOIP_Volunteer_Management_Portal/*.gs)",
+      "Bash(for portal:*)",
+      "Bash(sed -i 's/window\\\\.APP_CONFIG = <?= appConfigJson ?>;/window.APP_CONFIG = <?!= appConfigJson ?>;/' \"$portal/Index.html\")",
+      "Bash(echo \"Fixed: $portal\")",
+      "Bash(npm run:*)",
+      "Bash(mkdir -p \"c:\\\\Users\\\\jvben\\\\Desktop\\\\PROJECTS\\\\icoip-landing\")",
+      "Bash(npm create:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(npx wrangler:*)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\jvben\\Desktop\\PROJECTS\\icoip-landing"
     ]
   },
   "hooks": {
