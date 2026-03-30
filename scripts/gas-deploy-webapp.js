@@ -5,9 +5,9 @@
 const https = require('https');
 const qs    = require('querystring');
 
-const CLIENT_ID     = '1072944905499-vm2v2i5dvn0a0d2o4ca36i1vge8cvbn0.apps.googleusercontent.com';
-const CLIENT_SECRET = 'v6V3fKV_zWU7iw1DrpO1rknX';
-const REFRESH_TOKEN = '1//0g3B544Go60RgCgYIARAAGBASNwF-L9IrmVE7eOMBHpoGLzaMfZtigo2AXCuU3SrZDLPazeiD0PzdOwr8DvYdQ0Tahr4kB9Vo-vc';
+const CLIENT_ID     = process.env.GAS_CLIENT_ID     || '';
+const CLIENT_SECRET = process.env.GAS_CLIENT_SECRET || '';
+const REFRESH_TOKEN = process.env.GAS_REFRESH_TOKEN || '';
 
 const PORTALS = [
   { name: '00 Master Suite',      id: '1--bAiU6Phx6oQ2pKHSCo72LFj9qltJfystRThJJhx24sw-A-nDur6pmq' },
